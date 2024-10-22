@@ -1,0 +1,534 @@
+---
+title: "One factor"
+author: "Ramon A. Zegpi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+The packages used:
+
+Patil, I. (2021). Visualizations with statistical details: The 
+'ggstatsplot' approach. Journal of Open Source Software, 6(61), 3167,
+doi:10.21105/joss.03167
+
+
+#```{r setup, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE)
+#```
+
+The code below need to be executed in total or nothing will work BEWARE
+
+```{r echo = T, warning=FALSE, message=FALSE}
+if (!require('writexl')) install.packages("writexl")
+if (!require('nplr')) install.packages("nplr")
+if (!require('rptR')) install.packages("rptR")
+if (!require('reticulate')) install.packages("reticulate")
+if (!require('Bolstad2')) install.packages("Bolstad2")
+if (!require('ggplot2')) install.packages("ggplot2")
+if (!require('readxl')) install.packages("readxl")
+if (!require('wesanderson')) install.packages("wesanderson")
+#if (!require('shiny')) install.packages("shiny")
+if (!require('scales')) install.packages("scales")
+if (!require('ggstatsplot')) install.packages("ggstatsplot")
+if (!require('ggsignif')) install.packages("ggsignif")
+if (!require('olsrr')) install.packages("olsrr")
+if (!require('hexbin')) install.packages("hexbin")
+
+library(olsrr)
+library(hexbin)
+library(writexl)
+library(nplr)
+library(rptR)
+library(ggplot2)
+library(tools)
+library(reticulate)
+library(Bolstad2)
+library(readxl)
+library(wesanderson)
+library(scales)
+library(ggstatsplot)
+library(ggsignif)
+
+
+#library(shiny)
+```
+
+
+Choose yor excel (xlsx) file with the right format (data organized well) in it
+
+```{r}
+#load data in columns, columns names are NOT the factor (make a column with the factor, like chicken group or chicken number)
+#data must be CSV in a matrix looking arrangement, with column names
+#ask for the file, check extension
+
+#setwd("C:/Users/Ramon.Zegpi/OneDrive - USDA/2022/Rprog/")
+
+file1 <- file.choose(new=FALSE)
+if(file_ext(file1)!="xlsx"){
+ stop("Wrong file extension") #if file extension is not xlsx, the program stops.
+} 
+
+dataColumns <- read_excel(file1, sheet = 1)
+#dataColumns <- subset(dataColumns, !is.na(dataColumns["Values"]))
+#dataColumns <- subset(dataColumns, !is.na(dataColumns["DPI"]))
+
+#x <- as.numeric(readline('What value of var1? \n 1. "a1" \n 2. "a2" \n'))
+#print(paste('The available columns are: '))
+#print(unlist(colnames(dataColumns)))
+
+
+```
+
+
+
+Define your colors. Change the variable colorPalette for another option (under names_wes_palettes) if you find a more suitable color group.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.height = 3, fig.width = 3}
+
+
+#names(wes_palettes)
+# [1] "BottleRocket1"  "BottleRocket2"  "Rushmore1"      "Rushmore"       "Royal1"         "Royal2"         "Zissou1"        "Darjeeling1"    "Darjeeling2"    **"Chevalier1"**    
+#[11] "FantasticFox1"  "Moonrise1"      *"Moonrise2"*      "Moonrise3"      "Cavalcanti1"    "GrandBudapest1" "GrandBudapest2" "IsleofDogs1"    *"IsleofDogs2"*  
+
+colorPalette <- "IsleofDogs2" #change the number with the number of groups
+
+#hist(rnorm(100000), col=wes_palette(colorPalette, n = length(unique(unlist(dataColumns$Groups))), type = "continuous"))
+colores <- wes_palette(colorPalette, n = length(unique(unlist(dataColumns$Groups))), type = "continuous")
+colores
+
+
+#wes_palette(colorPalette, n = 10, type = "continuous")
+
+#to see palettes available  :  View(paletteer::palettes_d_names) or View(paletteer::palettes_c_names)
+
+```
+
+
+
+For pairwise comparisons and significant differences shown with "*" for differences
+And NO boxplots
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+
+#method_stat <- extract_stats(ploplo)
+#method_stat <- unlist(method_stat$subtitle_data$method)
+#change plot size with fig.height and fig.width in previous line as follows:  {r echo = FALSE, warning=FALSE, message=FALSE, fig.height = 2, fig.width = 3}
+#method_stat
+
+#equal variances?
+vartest <- fligner.test(x = dataColumns$Values, g = dataColumns$Groups)
+if(vartest$p.value<0.05){
+  equalVar <- FALSE
+}else{
+  equalVar <- TRUE
+}
+
+
+#check for parametric or non parametric
+normtest <- lm(Values~Groups, data = dataColumns)
+testvals <- ols_test_normality(normtest)
+parametric_test=""#decision of parametric or non parametric to be stored here
+paramtestinfo <- "" #info for the caption
+if(length(dataColumns$Groups)<51){
+  if(testvals$shapiro$p.value<0.05){
+    parametric_test="non-parametric"
+  }else{
+    parametric_test="parametric"
+  }
+}else{
+  if(testvals$kolmogorv$p.value<0.05){
+    parametric_test="non-parametric"
+  }else{
+    parametric_test="parametric"
+  }
+}
+if(parametric_test=="parametric"){
+  if(length(unique(unlist(dataColumns$Groups)))>2){
+    if(equalVar){
+      paramtestinfo <- "Hypothesis testing: Fisher's one-way ANOVA"
+    }else{
+      paramtestinfo <- "Hypothesis testing: Welch's analysis of means"
+    }
+    
+  }else{
+    paramtestinfo <- "Hypothesis testing: Student's t-test"
+  }
+}else{
+  if(length(unique(unlist(dataColumns$Groups)))>2){
+    paramtestinfo <- "Hypothesis testing: Kruskal-Wallis test"
+  }else{
+    paramtestinfo <- "Hypothesis testing: Mann-Whitney U test"
+  }
+}
+
+#Plotting many parameters were left out (after the #), to get the format I wanted
+ploplo2 <- ggstatsplot::ggbetweenstats(
+  data = dataColumns,
+  x = Groups,
+  y = Values,
+  #type = "non-parametric", 
+  conf.level = 0.95,
+  plot.type = "box",
+  #grouping.var = Groups, to group acording to anothe-r variable
+  messages = FALSE,
+  pairwise.comparisons = FALSE, #has to be true to get p values to use the asterisks in ggsignif
+  #pairwise.display = "all", #"none"to not show significant differences with p values, all or significant to show the pvalues on the plot
+  #pairwise.annotation = "p.value",
+  #p.adjust.method = "bonferroni" 
+  notch = FALSE, # show notched box plot
+  #mean.plotting = FALSE, # whether mean for each group is to be displayed
+  #mean.ci = FALSE, # whether to display confidence interval for means
+  #mean.label.size = 10, # size of the label for mean --- does not change anything
+  k = 2, # number of decimal places for statistical results
+  #outlier.tagging = TRUE, # whether outliers need to be tagged
+  #outlier.label = Values, # variable to be used for the outlier tag
+  #outlier.label.color = "darkgreen", # changing the color for the text label
+  #xlab = "Groups", # label for the x-axis variable
+  #ylab = "Avidity", # label for the y-axis variable
+  #title = dataColumns$title, #title
+  #subtitle = dataColumns$subtitle, # subtitle text for the plot
+  #ggtheme = ggthemes::theme_fivethirtyeight(), # choosing a different theme
+  #ggstatsplot.layer = FALSE, # turn off ggstatsplot theme layer
+  #package = "dutchmasters", # package from which color palette is to be taken   dutchmasters
+  #palette = "milkmaid", # choosing a different color palette   milkmaid
+  messages = FALSE, 
+  #p.adjust.method = "bonferroni", 
+  results.subtitle = FALSE, 
+  centrality.plotting = FALSE,
+  #boxplot.args(), #will be available soon (?)
+  ggsignif.args = list(textsize = 2, tip_length = 0.01),
+  point.args = list(shape = 21, size = 3, position = ggplot2::position_jitterdodge(jitter.width = 0.5, seed=1), alpha = 0)# to change the format of the points in geom_point 
+) + # further modification outside of ggstatsplot
+  #ggplot2::scale_color_manual(values = rep("Black", length(unique(unlist(dataColumns$Groups)))), aesthetics = c("color"))+
+  ggplot2::scale_color_manual(values = wes_palette(colorPalette, length(unique(unlist(dataColumns$Groups))), type = "continuous"))+
+  #ggplot2::geom_jitter(aes(unlist(dataColumns$Groups), unlist(dataColumns$Values)), seed = 1, shape = 21, size=3, color = "black", fill=wes_palette(colorPalette, length(unique(unlist(dataColumns$Groups)))), position = "jitter")+
+  ggplot2::scale_y_continuous(limits = c(min(dataColumns$Values)*0.9,max(dataColumns$Values)*1.5))+#if something is out of sight, check this values
+  ggplot2:: theme(text=element_text(family="sans"), 
+       plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(t = 0, r = 0, b = 5, l = 0, unit = "pt")), 
+       plot.subtitle = element_text(hjust = 0.5, margin = margin(t = 0, r = 0, b = 20, l = 0, unit = "pt")), 
+       plot.caption = element_text(hjust = 0), 
+       panel.background = element_rect(fill = "white", color = "lightgray"), 
+       panel.grid.major.y = element_line(color = "gray95", linetype = "solid"), 
+       panel.grid.major.x = element_line(color = "white",linetype = "blank"), 
+       panel.grid.minor = element_line(color = "White", linetype = "solid"), 
+       axis.text.x.bottom = element_text(face="plain", color="Black", size=11, angle=0, margin = margin(t = 5, r = 0, b = 0, l = 0, unit = "pt")),
+       axis.text.x.top = element_text(face="plain", color="Black", size=11, angle=45, margin = margin(t = 0, r = 0, b = 5, l = 0, unit = "pt")),
+       axis.text.y = element_text(face="plain", color="Black", size=11, angle=0, margin = margin(t = 0, r = 5, b = 0, l = 0, unit = "pt")),
+       axis.title.x = element_text(face = "plain", margin = margin(t = 10, r = 0, b = 0, l = 0, unit = "pt")), 
+       axis.title.x.top = element_text(face = "plain", margin = margin(t = 0, r = 0, b = 10, l = 0, unit = "pt")), 
+       axis.title.y = element_text(face = "plain", margin = margin(t = 0, r = 5, b = 0, l = 0, unit = "pt")), 
+       legend.position = "none"
+       )
+
+
+#caption = paste(dataColumns$Caption[1], paramtestinfo, sep = "\n")
+#the following 2 commands serve the purpose of removing the boxplots
+ploplo2$plot_env$plot$layers[[2]]$aes_params$alpha <- 0 #shows box fill transparency, can be edited, must be 0 for the box fill color not to be aparent
+
+ploplo2$layers[[2]]$geom$default_aes$linetype <- "blank" #removes boxplot lines, use "solid" to put them back
+#ploplo2$layers[[1]]$geom$default_aes$shape <- 21
+#ploplo2$layers[[2]]$geom$default_aes$shape <- 21
+
+#ploplo2$layers[[1]]$aes_params$alpha <- 0.75
+#ploplo2$layers[[2]]$aes_params$alpha <- 0.75
+#changing p values
+
+#define number of * for each significant comparison
+
+plop <- ggstatsplot::pairwise_comparisons(dataColumns, Groups, Values, type = parametric_test, conf.level = 0.95, var.equal = equalVar)
+anotalo <- as.numeric(plop$p.value[plop$p.value<(1-ploplo2$plot_env$conf.level)])
+anotalo2 <- as.character(anotalo)
+if(length(anotalo)>0){
+  for (i in 1:length(anotalo)){
+    if(anotalo[i]<0.001){
+      anotalo2[i] = "***"
+    }else{
+      if(anotalo[i]<0.01){
+        anotalo2[i] = "**"  
+      }else{
+        if(anotalo[i]<0.05){
+          anotalo2[i] = "*"
+        }
+      }
+    }
+  }
+  compares <- list()
+  #compares <- list(c(plop$group1[plop$p.value<(1-ploplo2$plot_env$conf.level)], plop$group2[plop$p.value<(1-ploplo2$plot_env$conf.level)]))
+  #compares <- paste(compares[,1], compares[,2], sep = " ")
+  plopy <- subset(plop, subset = plop$p.value<(1-ploplo2$plot_env$conf.level))
+  for(i in 1:length(plopy$group1)){
+      compares[[i]] <- c(plopy$group1[[i]], plopy$group2[[i]])
+  }
+}
+
+
+#defining which are the significant comparisons
+
+
+
+if(length(anotalo)>1){
+
+  #plotting
+  ploplo3 <- ploplo2+
+    ggplot2::labs(
+      title = dataColumns$title[1], 
+      subtitle = dataColumns$subtitle[1] ,
+      caption = paste(dataColumns$Caption[1], paramtestinfo, paste("Pairwise comparison test: ", paste(plop$test[[1]], "'s post-test", sep="")), paste("Equal variances: ", equalVar), paste("Conf. level:", ploplo2$plot_env$conf.level), "p-value<0.05 (*), p-value<0.01 (**), p-value<0.001 (***)", sep = "\n"), 
+      x=dataColumns$labelx[1], 
+      y=dataColumns$labely[1]
+      )+ 
+    ggsignif::geom_signif(
+      comparisons = compares,
+      #y_position = (1+((range(1, length(compares), by = 1))/20))*max(dataColumns$Values),
+      test = NULL, 
+      show.legend = FALSE, 
+      map_signif_level = FALSE, 
+      annotations = anotalo2, 
+      na.rm=TRUE, 
+      step_increase = 0.5, 
+      tip_length = 0.01)#+ #to put * on the differences, y_position helps with the brackets
+    #ggplot2::scale_y_continuous(limits = c(min(dataColumns$Values)*0.9,max(dataColumns$Values)*1.3))
+}else{
+  if(length(anotalo)==1){
+    ploplo3 <- ploplo2+
+    ggplot2::labs(
+      title = dataColumns$title[1], 
+      subtitle = dataColumns$subtitle[1] ,
+      caption = paste(dataColumns$Caption[1], paramtestinfo, paste("Equal variances:", equalVar), "p-value<0.05 (*), p-value<0.01 (**), p-value<0.001 (***)", sep = "\n"), 
+      x=dataColumns$labelx[1], 
+      y=dataColumns$labely[1]
+      )+ 
+    ggsignif::geom_signif(
+      comparisons = compares,
+      y_position = 40, #(1+((range(1, length(compares), by = 1))/20))*max(dataColumns$Values),
+      test = NULL, 
+      show.legend = FALSE, 
+      map_signif_level = FALSE, 
+      annotations = anotalo2, 
+      na.rm=TRUE, 
+      step_increase = 0.5, 
+      tip_length = 0.01)#+ #to put * on the differences, y_position helps with the brackets
+    #ggplot2::scale_y_continuous(limits = c(min(dataColumns$Values)*0.9,max(dataColumns$Values)*1.3))
+  }else{
+      ploplo3 <- ploplo2+
+      ggplot2::labs(
+      title = dataColumns$title[1],
+      subtitle = dataColumns$subtitle[1],
+      caption = dataColumns$Caption[1],
+      x=dataColumns$labelx[1],
+      y=dataColumns$labely[1]
+      )#+
+   # ggplot2::scale_y_continuous(limits = c(min(dataColumns$Values)*0.9,max(dataColumns$Values)*1.3))
+  }
+
+}
+
+ploplo4 <- ploplo3+geom_point(aes(dataColumns$Groups, dataColumns$Values, fill = (unlist(dataColumns$Groups))), shape = 21, alpha = 0.5, size=3, position = position_jitterdodge(jitter.width = 0.5, seed=1), na.rm = TRUE)+
+scale_fill_manual(values = wes_palette(colorPalette, length((unlist(unique(dataColumns$Groups)))), type = "continuous"))
+
+ploplo4
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.height = 3, fig.width = 3}
+#save the plot
+ggsave(plot = ploplo4, paste(file1, "_", gsub(Sys.time(), pattern = ":", replacement = "-"),"_plot.png", sep = ""), width = 5, height = 4, units = "in")#define size of figure
+
+```
+
+Repeatability
+
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+#grname comes from all the different sample names. It MUST be lower than the actual number of samples. It is grouping factor names (grname).
+rpt(Values~(1|Samples), grname = "Samples", data = dataColumns, datatype = "Gaussian", nboot = 1000, npermut = 1000)
+```
+
+
+
+
+Figure without stats
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+
+#change plot size with fig.height and fig.width in previous line {r echo = FALSE, warning=FALSE, message=FALSE, fig.height = 2, fig.width = 3}
+
+plotcol <- ggplot()+
+#CHECK IF YOU WANT ERROR BARS
+  #geom_errorbar(aes(x = unlist(meansd$Groups), ymin = unlist(meansd$ymini), ymax = unlist(meansd$ymaxi)), width = 0.2, color = "grey40")+
+  #geom_errorbar(aes(x = unlist(meansd$Groups), ymin = unlist(meansd$Mean), ymax = unlist(meansd$Mean)), width = 0.1, color = "grey40")+
+  
+  #the fill or color aesthetic is needed for the jitter to work... for some reason
+ geom_point(data=dataColumns, aes(x=Groups, y=Values, fill = factor(Groups)), shape = 21, position = position_jitterdodge(jitter.width = 0.4),  stroke = .5, size = 4, alpha = 0.6)+ #you can add seed=1 inside position_jitterdodge()
+  scale_fill_manual(values = wes_palette(colorPalette, length(unique(unlist(dataColumns$Groups))), type = "continuous"))+
+  #scale_color_manual(values = colors5[1:length(unique(unlist(dataColumns$Groups)))])+
+  labs(title = dataColumns$title[1], subtitle = dataColumns$subtitle[1] ,caption = dataColumns$Caption[1], x=dataColumns$labelx[1], y=dataColumns$labely[1], col="Groups")+ 
+  
+  #scale_color_hue(l=40, c=35)+
+  #col or shapes=Groups changes the legend name, color or shape was used in AES 
+
+ ylim(0,max(unlist(dataColumns$Values)*1.3))+ #limits of plot
+  
+# scale_x_continuous("DOA", breaks = unique(dataColumns$DOA)[(unique(dataColumns$DOA)-dataColumns$inoc[1])>0], limits = c(min(unique(dataColumns$DOA)[(unique(dataColumns$DOA)-dataColumns$inoc[1])>0]), max(unique(dataColumns$DOA)[(unique(dataColumns$DOA)-dataColumns$inoc[1])>0])),  sec.axis = sec_axis(~.-dataColumns$inoc[1], name = "DPI", breaks = (unique(dataColumns$DOA)-dataColumns$inoc[1])[(unique(dataColumns$DOA)-dataColumns$inoc[1])>0]))+
+  #IMPORTANT, dataColumns$inoc is a vector, you just need the firts thing from it
+  
+  #scale_y_reverse()+
+  
+ #annotate(geom = "text", x = factor(unique(unlist(dataColumns$DPI))), y = diff(range(dataColumns$Values))+13, label = unique(unlist(dataColumns$DPI)))+
+  
+ theme(text=element_text(family="serif"), 
+       plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(t = 0, r = 0, b = 5, l = 0, unit = "pt")), 
+       plot.subtitle = element_text(hjust = 0.5, margin = margin(t = 0, r = 0, b = 20, l = 0, unit = "pt")), 
+       plot.caption = element_text(hjust = 0), 
+       panel.background = element_rect(fill = "white", color = "lightgray"), 
+       panel.grid.major.y = element_line(color = "gray95", linetype = "solid"),
+       panel.grid.major.x = element_line(color = "gray95", linetype = "blank"),
+       panel.grid.minor = element_line(color = "White", linetype = "solid"),
+       axis.text.x.bottom = element_text(face="plain", color="Black", size=11, angle=0, margin = margin(t = 5, r = 0, b = 0, l = 0, unit = "pt")),
+       axis.text.x.top = element_text(face="plain", color="Black", size=11, angle=45, margin = margin(t = 0, r = 0, b = 5, l = 0, unit = "pt")),
+       axis.text.y = element_text(face="plain", color="Black", size=11, angle=0, margin = margin(t = 0, r = 5, b = 0, l = 0, unit = "pt")),
+       axis.title.x = element_text(face = "plain", margin = margin(t = 10, r = 0, b = 0, l = 0, unit = "pt")), 
+       axis.title.x.top = element_text(face = "plain", margin = margin(t = 0, r = 0, b = 10, l = 0, unit = "pt")), 
+       axis.title.y = element_text(face = "plain", margin = margin(t = 0, r = 5, b = 0, l = 0, unit = "pt")), 
+       legend.position = "none")
+
+#legend.position to move or remove legend
+
+#coord_cartesian(xlim =c(15, 25), ylim = c(3, 4))
+
+plotcol
+```
+Types of fonts:
+mono (Courier)
+sans (Arial)
+serif (times new roman)
+Style of fonts:
+plain
+bold
+italic
+bold.italic
+
+
+if you need to change a aesthetic, check 
+"plotcol$plot_env$plotcol$layers[[1]]$geom$default_aes"
+
+
+
+Next:
+
+This chunk of code saves the figure in a PDF file in the folder where the excel file is. The file name has the date and time of the moment when the figure was saved. If you try to run this code many times, very fast, you may get an error.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.height = 3, fig.width = 3}
+#save the plot
+ggsave(plot = plotcol, paste(gsub(Sys.time(), pattern = ":", replacement = "-"),"_plot.png"), width = 2, height = 4, units = "in")
+
+```
+
+
+Plot with p-values and p-value adjustment
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+
+#change plot size with fig.height and fig.width in previous line {r echo = FALSE, warning=FALSE, message=FALSE, fig.height = 4, fig.width = 6}
+
+#Check normality
+normtest <- lm(Values~Groups, data = dataColumns)
+testvals <- ols_test_normality(normtest)
+parametric_test=""#decision of parametric or non parametric to be stored here
+if(length(dataColumns$Groups)<51){
+  if(testvals$shapiro$p.value<0.05){
+    parametric_test="non-parametric"
+  }else{
+    parametric_test="parametric"
+  }
+}else{
+  if(testvals$kolmogorv$p.value<0.05){
+    parametric_test="non-parametric"
+  }else{
+    parametric_test="parametric"
+  }
+}
+
+
+#ploting
+ploplo <- ggstatsplot::ggbetweenstats(
+  data = dataColumns,
+  x = Groups,
+  y = Values,
+  type = parametric_test,
+  conf.level = 0.95,
+  plot.type = "box",
+  #grouping.var = Groups, to group acording to another variable
+  #messages = TRUE, 
+  pairwise.comparisons = TRUE, #has to be true to get p values to use the asterisks in ggsignif
+  #pairwise.display = "Significant", #"none"to not show significant differences with p values, all or significant to show the pvalues on the plot
+  notch = TRUE, # show notched box plot
+  mean.plotting = FALSE, # whether mean for each group is to be displayed
+  mean.ci = FALSE, # whether to display confidence interval for means
+  #mean.label.size = 10, # size of the label for mean --- does not change anything
+  k = 2, # number of decimal places for statistical results
+  #outlier.tagging = TRUE, # whether outliers need to be tagged
+  #outlier.label = Values, # variable to be used for the outlier tag
+  #outlier.label.color = "darkgreen", # changing the color for the text label
+  #xlab = "Groups", # label for the x-axis variable
+  #ylab = "Avidity", # label for the y-axis variable
+  #title = dataColumns$title, #title
+  #subtitle = dataColumns$subtitle, # subtitle text for the plot
+  #ggtheme = ggthemes::theme_fivethirtyeight(), # choosing a different theme
+  #ggstatsplot.layer = FALSE, # turn off ggstatsplot theme layer
+  #package = "dutchmasters", # package from which color palette is to be taken
+  #palette = "little_street", # choosing a different color palette
+  #p.adjust.method = "bonferroni", 
+  results.subtitle = TRUE, #lots of data to confound the public
+  centrality.plotting = FALSE,
+  point.args = list(shape = 19, size = 4, position = position_jitterdodge(jitter.width = 0.4), alpha = 0.6),# to change the format of the points in geom_point 
+  ggsignif.args = list(textsize = 3, tip_length = 0.01, step_increase = 0.1)
+) + # further modification outside of ggstatsplot
+  #ggsignif::geom_signif(show.legend = TRUE, map_signif_level = TRUE, step_increase = 5)+
+  #geom_signif(show.legend = TRUE, map_signif_level = TRUE)+
+  ggplot2::labs(title = dataColumns$title[1], subtitle = dataColumns$subtitle[1] ,caption = dataColumns$Caption[1], x=dataColumns$labelx[1], y=dataColumns$labely[1], col="Groups")+
+          scale_color_manual(values = wes_palette(colorPalette, length(unique(unlist(dataColumns$Groups))), type = "continuous"))+
+  #ggplot2::scale_fill_manual(values = "Black")+
+          scale_y_continuous(limits = c(min(dataColumns$Values)*0.9,max(dataColumns$Values)*2))+
+  #ggplot2::scale_fill_manual(values = rep("black",length(unique(unlist(dataColumns$Groups)))), aesthetics = "fill")+
+  ggplot2::theme(text=element_text(family="sans"), 
+       plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(t = 0, r = 0, b = 5, l = 0, unit = "pt")), 
+       plot.subtitle = element_text(hjust = 0.5, margin = margin(t = 0, r = 0, b = 20, l = 0, unit = "pt")), 
+       plot.caption = element_text(hjust = 0), 
+       panel.background = element_rect(fill = "white", color = "lightgray"), 
+       panel.grid.major.y = element_line(color = "gray95", linetype = "solid"), 
+       panel.grid.minor = element_line(color = "White", linetype = "solid"), 
+       axis.text.x.bottom = element_text(face="plain", color="Black", size=11, angle=0, margin = margin(t = 5, r = 0, b = 0, l = 0, unit = "pt")),
+       axis.text.x.top = element_text(face="plain", color="Black", size=11, angle=45, margin = margin(t = 0, r = 0, b = 5, l = 0, unit = "pt")),
+       axis.text.y = element_text(face="plain", color="Black", size=11, angle=0, margin = margin(t = 0, r = 5, b = 0, l = 0, unit = "pt")),
+       axis.title.x = element_text(face = "plain", margin = margin(t = 10, r = 0, b = 0, l = 0, unit = "pt")), 
+       axis.title.x.top = element_text(face = "plain", margin = margin(t = 0, r = 0, b = 10, l = 0, unit = "pt")), 
+       axis.title.y = element_text(face = "plain", margin = margin(t = 0, r = 5, b = 0, l = 0, unit = "pt")), 
+       legend.position = "none"
+       )
+
+
+ploplo$plot_env$plot$layers[[3]]$aes_params$alpha <- 0 #shows box fill alpha, can be edited, must be 0 for the box not to be aparent
+ploplo$layers[[3]]$geom$default_aes$linetype <- "blank" #gets rid of the line of the boxplots (too crowded with the box plots there)
+#ploplo$layers[[1]]$aes_params$alpha <- 0.75
+#ploplo$layers[[1]]$aes_params$size <- 5
+#ploplo$layers[[2]]$aes_params$alpha <- 0.75
+#ploplo$layers[[2]]$aes_params$size <- 5
+
+#  ggplot2::coord_cartesian(ylim = c(0, 2.2)) +
+#  ggplot2::scale_y_continuous(breaks = seq(0, 3, by = 0.5))
+#  ggplot2::geom_boxplot(color = "gray50", alpha = 0.6, varwidth = TRUE)
+
+ploplo
+```
+
+
+Next:
+
+This chunk of code saves the figure in a PDF file in the folder where the excel file is. The file name has the date and time of the moment when the figure was saved. If you try to run this code many times, very fast, you may get an error.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.height = 3, fig.width = 3}
+#save the plot
+ggsave(plot = ploplo, paste(file1, "_", gsub(Sys.time(), pattern = ":", replacement = "-"),"_plot.pdf"), width = 8, height = 4, units = "in")#define size of figure
+
+```
